@@ -24,7 +24,7 @@ def play(agent: Agent, episodes=5000):
         while not done:
             agent.before()
 
-            action = agent.act()
+            action = agent.act(state)
 
             next_state, reward, done, info = env.step(action)
 

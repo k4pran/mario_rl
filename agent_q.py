@@ -4,12 +4,10 @@ from collections import deque
 import torch
 import numpy as np
 from torch.nn.modules import Module, Linear, Conv3d
-from torch.optim import Adam
 import torch.nn.functional as fn
 from torchvision.transforms import transforms
 
 from agent_base import Agent
-from image_viewer import display_img
 from agent_exceptions import UnknownTensorType
 from agent_augments.memory import ReplayMemory
 
@@ -17,6 +15,7 @@ if torch.cuda.is_available():
     device = torch.device("cuda:0")
 else:
     device = torch.device("cpu")
+
 
 
 def prepare_2d_shape(state: torch.tensor):
@@ -36,7 +35,7 @@ class AgentQ(Agent, Module, ReplayMemory):
                  image_dims=(90, 90),
                  batch_size=1,
                  nb_motion_frames=4,
-                 epsilon=0.9,
+                 epsilon=0.3,
                  epsilon_min=0.2,
                  epsilon_decay=0.99,
                  gamma=0.9,
@@ -50,6 +49,10 @@ class AgentQ(Agent, Module, ReplayMemory):
         self.batch_size = batch_size
         self.nb_motion_frames = nb_motion_frames
         self.current_motion_frames = deque(maxlen=nb_motion_frames)
+
+        self.epsilon = epsilon
+        self.epsilon_min = epsilon_min
+        self.epsilon_decay = epsilon_decay
         self.gamma = gamma
 
         self.in_layer = Conv3d(channels, 32, (1, 8, 8))
@@ -68,10 +71,21 @@ class AgentQ(Agent, Module, ReplayMemory):
         pass
 
     def after(self, *args, **kwargs):
-        pass
+        self.decay_epsilon()
 
-    def act(self) -> int:
-        return random.randrange(self.action_space)  # todo
+    def decay_epsilon(self):
+        if self.epsilon >= self.epsilon_min:
+            self.epsilon *= self.epsilon_decay
+
+    def act(self, state) -> int:
+        if random.random() > self.epsilon and len(self.current_motion_frames) == self.current_motion_frames.maxlen:
+            state = prepare_2d_shape(self.as_tensor(state))
+            state = self.transform(state)
+            updated_motion_frames = [motion_frame[0] for motion_frame in list(self.current_motion_frames)[1:]] + [state]
+            motion_states = self.stack_frames([motion_frame for motion_frame in updated_motion_frames])
+            return self(prepare_3d_shape(motion_states).unsqueeze(0)).argmax(1).item()
+        else:
+            return random.randrange(self.action_space)
 
     def learn(self, *args, **kwargs):
         self.memorise(kwargs.get('state'),
@@ -99,8 +113,6 @@ class AgentQ(Agent, Module, ReplayMemory):
             self.optimizer.step()
 
             return loss.item()
-
-
 
     def memorise(self, state, action, reward, next_state, done):
         state = prepare_2d_shape(self.as_tensor(state))
@@ -148,6 +160,12 @@ class AgentQ(Agent, Module, ReplayMemory):
         transform_pipeline.append(transforms.Resize(self.image_dims))
         transform_pipeline.append(transforms.ToTensor())
         return transforms.Compose(transform_pipeline)
+
+    def prepare_single_state(self, state: np.ndarray):
+        state = self.as_tensor(state)
+        state = prepare_2d_shape(state)
+        state = self.transform(state)
+        return state.permute(2, 0, 1)
 
     def flatten(self, x):
         flattened_count = 1

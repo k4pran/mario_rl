@@ -12,7 +12,7 @@ class Agent(ABC):
         pass
 
     @abstractmethod
-    def act(self) -> int:
+    def act(self, state) -> int:
         pass
 
     @abstractmethod

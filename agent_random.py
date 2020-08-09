@@ -15,7 +15,7 @@ class AgentRandom(Agent):
     def after(self, *args, **kwargs):
         pass
 
-    def act(self) -> int:
+    def act(self, _) -> int:
         return random.randrange(self.action_space)
 
     def learn(self, *args, **kwargs):
