@@ -1,0 +1,2 @@
+class UnknownTensorType(Exception):
+    pass
