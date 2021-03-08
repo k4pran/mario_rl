@@ -4,7 +4,7 @@ from collections import deque
 
 class ReplayMemory:
 
-    def __init__(self, capacity=2000):
+    def __init__(self, capacity=100000):
         self.memory = deque(maxlen=capacity)
 
     def store(self, state, action, reward, next_state, done):

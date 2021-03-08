@@ -1,91 +1,100 @@
 import random
-from collections import deque
 
+import gym
+import gym_super_mario_bros
 import torch
 import numpy as np
-from torch.nn.modules import Module, Linear, Conv3d
-import torch.nn.functional as fn
-from torchvision.transforms import transforms
-
 from agent_base import Agent
-from agent_exceptions import UnknownTensorType
 from agent_augments.memory import ReplayMemory
+from skimage.transform import resize
+from skimage.color import rgb2gray
+from torchsummary import summary
+
+from model import DQN
+
+EVAL_SAVE_FORMAT = "./checkpoint/eval_net-episode-{}--score-{}"
+TARG_SAVE_FORMAT = "./checkpoint/targ_net-episode-{}--score-{}"
 
 if torch.cuda.is_available():
     device = torch.device("cuda:0")
 else:
     device = torch.device("cpu")
 
+print("Using device: {}".format(device))
 
 
-def prepare_2d_shape(state: torch.tensor):
-    return state.permute(2, 0, 1)
-
-
-def prepare_3d_shape(stacked_2d_state: torch.Tensor):
-    return stacked_2d_state.permute(1, 0, 2, 3)
-
-
-class AgentQ(Agent, Module, ReplayMemory):
+class AgentQ(Agent, ReplayMemory):
 
     def __init__(self,
-                 state_space,
                  action_space,
-                 channels=1,
-                 image_dims=(90, 90),
-                 batch_size=1,
-                 nb_motion_frames=4,
-                 epsilon=0.3,
-                 epsilon_min=0.2,
-                 epsilon_decay=0.99,
-                 gamma=0.9,
-                 learning_rate=0.001):
-        Module.__init__(self)
-        ReplayMemory.__init__(self)
-        self.state_space = state_space
+                 height,
+                 width,
+                 frames=4,
+                 batch_size=64,
+                 epsilon=1,
+                 epsilon_min=0.01,
+                 epsilon_decay=1e-5,
+                 gamma=0.99,
+                 learning_rate=0.0002,
+                 save_freq=10000,
+                 training=True,
+                 load_agent=False,
+                 eval_agent_path="checkpoint/eval_net-episode-2290000--score-3132.0",
+                 targ_agent_path="checkpoint/targ_net-episode-2290000--score-3132.0"):
+        ReplayMemory.__init__(self, capacity=10000)
+
         self.action_space = action_space
-        self.channels = channels
-        self.image_dims = image_dims
+        self.frames = frames
         self.batch_size = batch_size
-        self.nb_motion_frames = nb_motion_frames
-        self.current_motion_frames = deque(maxlen=nb_motion_frames)
+        self.save_freq = save_freq
+        self.iteration_count = 0
+        self.training = training
 
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
         self.gamma = gamma
+        self.replace_every = 1000
 
-        self.in_layer = Conv3d(channels, 32, (1, 8, 8))
-        self.hidden_conv_1 = Conv3d(32, 64, (1, 4, 4))
-        self.hidden_conv_2 = Conv3d(64, 128, (1, 3, 3))
-        self.hidden_fc1 = Linear(128 * 4 * 78 * 78, 64)
-        self.hidden_fc2 = Linear(64, 32)
-        self.output = Linear(32, action_space)
+        self.eval_net = DQN(device, action_space, batch_size, frames, height, width, learning_rate)
+        self.targ_net = DQN(device, action_space, batch_size, frames, height, width, learning_rate)
 
-        self.transform = self.get_transform()
+        if load_agent:
+            self.load_model(eval_agent_path, targ_agent_path)
 
-        self.optimizer = torch.optim.Adam(
-            self.parameters(), lr=learning_rate)
+        summary(self.eval_net, (frames, height, width))
+        summary(self.targ_net, (frames, height, width))
 
-    def before(self, *args, **kwargs):
-        pass
+    @staticmethod
+    def flatten(x):
+        flattened_count = 1
+        for dim in x.shape[1:]:
+            flattened_count *= dim
+        return x.view(-1, flattened_count)
 
-    def after(self, *args, **kwargs):
-        self.decay_epsilon()
+    def update_target_network(self):
+        if self.iteration_count % self.replace_every == 0:
+            self.targ_net.load_state_dict(self.eval_net.state_dict())
 
     def decay_epsilon(self):
-        if self.epsilon >= self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
+        self.epsilon = self.epsilon - self.epsilon_decay \
+            if self.epsilon > self.epsilon_min else self.epsilon_min
 
     def act(self, state) -> int:
-        if random.random() > self.epsilon and len(self.current_motion_frames) == self.current_motion_frames.maxlen:
-            state = prepare_2d_shape(self.as_tensor(state))
-            state = self.transform(state)
-            updated_motion_frames = [motion_frame[0] for motion_frame in list(self.current_motion_frames)[1:]] + [state]
-            motion_states = self.stack_frames([motion_frame for motion_frame in updated_motion_frames])
-            return self(prepare_3d_shape(motion_states).unsqueeze(0)).argmax(1).item()
+        if random.random() > self.epsilon or not self.training:
+            state = torch.tensor(state, device=device)
+            return self.eval_net(state.unsqueeze(0)).argmax(1).item()
         else:
             return random.randrange(self.action_space)
+
+    def before(self):
+        pass
+
+    def after(self, score):
+        self.iteration_count += 1
+        if self.iteration_count % self.save_freq == 0:
+            self.save_model(score)
+        self.decay_epsilon()
 
     def learn(self, *args, **kwargs):
         self.memorise(kwargs.get('state'),
@@ -94,81 +103,133 @@ class AgentQ(Agent, Module, ReplayMemory):
                       kwargs.get('next_state'),
                       kwargs.get('done'))
 
+        if not self.training:
+            return
+
         if self.get_mem_count() >= self.batch_size:
             sample = self.sample(self.batch_size)
             states = torch.stack([i[0] for i in sample])
-            actions = torch.tensor([i[1] for i in sample])
-            rewards = torch.tensor([i[2] for i in sample])
+            actions = torch.tensor([i[1] for i in sample], device=device)
+            rewards = torch.tensor([i[2] for i in sample], dtype=torch.float32, device=device)
             next_states = torch.stack([i[3] for i in sample])
-            dones = torch.tensor([i[4] for i in sample])
+            dones = torch.tensor([i[4] for i in sample], dtype=torch.uint8, device=device)
 
-            current_q_vals = self(states)[torch.arange(states.size()[0]), actions]
-            max_next_q_vals = self(next_states).max(dim=1)[0]
-            q_target = torch.tensor(rewards + (self.gamma * max_next_q_vals)) * ~dones
+            self.update_target_network()
 
-            self.optimizer.zero_grad()
-            loss = fn.smooth_l1_loss(current_q_vals, q_target)
+            current_q_vals = self.eval_net(states)
+            next_q_vals = self.targ_net(next_states)
+            q_target = current_q_vals.clone().detach()
+            q_target[torch.arange(states.size()[0]), actions] = rewards + (self.gamma * next_q_vals.max(dim=1)[0]) * (
+                        1 - dones)
+
+            self.eval_net.optimizer.zero_grad()
+            loss = self.eval_net.loss(current_q_vals, q_target)
             loss.backward()
-
-            self.optimizer.step()
-
-            return loss.item()
+            self.eval_net.optimizer.step()
 
     def memorise(self, state, action, reward, next_state, done):
-        state = prepare_2d_shape(self.as_tensor(state))
-        state = self.transform(state)
+        state = torch.tensor(state, device=device)
+        next_state = torch.tensor(next_state, device=device)
 
-        next_state = prepare_2d_shape(self.as_tensor(next_state))
-        next_state = self.transform(next_state)
+        self.store(
+            state,
+            action,
+            reward,
+            next_state,
+            done)
 
-        self.current_motion_frames.append((state, next_state))
+    def get_epsilon(self):
+        return self.epsilon
 
-        if len(self.current_motion_frames) == self.current_motion_frames.maxlen:
-            stacked_states = self.stack_frames([motion_frame[0] for motion_frame in self.current_motion_frames])
-            stacked_next_states = self.stack_frames([motion_frame[1] for motion_frame in self.current_motion_frames])
+    def load_model(self, eval_path, targ_path):
+        self.eval_net.load_state_dict(torch.load(eval_path))
+        self.targ_net.load_state_dict(torch.load(targ_path))
 
-            self.store(
-                prepare_3d_shape(stacked_states),
-                action,
-                reward,
-                prepare_3d_shape(stacked_next_states),
-                done)
+    def save_model(self, score):
+        torch.save(self.eval_net.state_dict(), EVAL_SAVE_FORMAT.format(self.iteration_count, score))
+        torch.save(self.targ_net.state_dict(), TARG_SAVE_FORMAT.format(self.iteration_count, score))
 
-    def forward(self, state):
-        in_out = self.in_layer(state)
-        in_out = self.hidden_conv_1(in_out)
-        in_out = self.hidden_conv_2(in_out)
-        in_out = fn.relu(self.hidden_fc1(self.flatten(in_out)))
-        in_out = fn.relu(self.hidden_fc2(in_out))
-        return self.output(in_out)
 
-    def as_tensor(self, unconverted_tensor):
-        if isinstance(unconverted_tensor, np.ndarray):
-            return torch.from_numpy(unconverted_tensor.copy())
-        elif isinstance(unconverted_tensor, torch.Tensor):
-            return unconverted_tensor
-        else:
-            raise UnknownTensorType("Tensor type is not supported. Supported types: ndarray | torch.tensor")
+class SkipEnv(gym.Wrapper):
+    def __init__(self, env=None, skip=4):
+        super(SkipEnv, self).__init__(env)
+        self._skip = skip
 
-    def stack_frames(self, frames):
-        return torch.stack(tuple(frames))
+    def step(self, action):
+        t_reward = 0.0
+        done = False
+        for _ in range(self._skip):
+            obs, reward, done, info = self.env.step(action)
+            t_reward += reward
+            if done:
+                break
+        return obs, t_reward, done, info
 
-    def get_transform(self):
-        transform_pipeline = [transforms.ToPILImage()]
-        if self.channels == 1:
-            transform_pipeline.append(transforms.Grayscale(num_output_channels=1))
-        transform_pipeline.append(transforms.Resize(self.image_dims))
-        transform_pipeline.append(transforms.ToTensor())
-        return transforms.Compose(transform_pipeline)
+    def reset(self):
+        self._obs_buffer = []
+        obs = self.env.reset()
+        self._obs_buffer.append(obs)
+        return obs
 
-    def prepare_single_state(self, state: np.ndarray):
-        state = self.as_tensor(state)
-        state = prepare_2d_shape(state)
-        state = self.transform(state)
-        return state.permute(2, 0, 1)
 
-    def flatten(self, x):
-        flattened_count = 1
-        for dim in x.shape[1:]:
-            flattened_count *= dim
-        return x.view(-1, flattened_count)
+class PreProcessFrame(gym.ObservationWrapper):
+    def __init__(self, env=None):
+        super(PreProcessFrame, self).__init__(env)
+        self.observation_space = gym.spaces.Box(low=0, high=255,
+                                                shape=(80, 80, 1), dtype=np.uint8)
+
+    def observation(self, obs):
+        return PreProcessFrame.process(obs)
+
+    @staticmethod
+    def process(frame):
+        frame = frame[40:, :, :]
+        frame = rgb2gray(frame.astype(np.float32))
+        frame = resize(frame, (80, 80))
+
+        return np.expand_dims(frame, -1).astype(np.float32)
+
+
+class MoveImgChannel(gym.ObservationWrapper):
+    def __init__(self, env):
+        super(MoveImgChannel, self).__init__(env)
+        self.observation_space = gym.spaces.Box(low=0.0, high=1.0,
+                                                shape=(self.observation_space.shape[-1],
+                                                       self.observation_space.shape[0],
+                                                       self.observation_space.shape[1]),
+                                                dtype=np.float32)
+
+    def observation(self, observation):
+        return np.moveaxis(observation, 2, 0)
+
+
+class ScaleFrame(gym.ObservationWrapper):
+    def observation(self, obs):
+        return np.array(obs).astype(np.float32) / 255.0
+
+
+class BufferWrapper(gym.ObservationWrapper):
+    def __init__(self, env, n_steps):
+        super(BufferWrapper, self).__init__(env)
+        self.observation_space = gym.spaces.Box(
+            env.observation_space.low.repeat(n_steps, axis=0),
+            env.observation_space.high.repeat(n_steps, axis=0),
+            dtype=np.float32)
+
+    def reset(self):
+        self.buffer = np.zeros_like(self.observation_space.low, dtype=np.float32)
+        return self.observation(self.env.reset())
+
+    def observation(self, observation):
+        self.buffer[:-1] = self.buffer[1:]
+        self.buffer[-1] = observation
+        return self.buffer
+
+
+def make_env(env_name):
+    env = gym_super_mario_bros.make(env_name)
+    env = SkipEnv(env)
+    env = PreProcessFrame(env)
+    env = MoveImgChannel(env)
+    env = BufferWrapper(env, 4)
+    return ScaleFrame(env)
