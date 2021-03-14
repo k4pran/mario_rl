@@ -1,9 +1,9 @@
 import random
 
-from agent_base import Agent
+from agent_frame import AgentBase
 
 
-class AgentRandom(Agent):
+class AgentRandom(AgentBase):
 
     def __init__(self, state_space, action_space):
         self.state_space = state_space
