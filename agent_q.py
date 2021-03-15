@@ -32,15 +32,15 @@ class AgentQ(Agent, ReplayMemory):
                  frames=4,
                  batch_size=64,
                  epsilon=1,
-                 epsilon_min=0.01,
-                 epsilon_decay=1e-5,
-                 gamma=0.99,
+                 epsilon_min=0.02,
+                 epsilon_decay=1e-6,
+                 gamma=0.9,
                  learning_rate=0.0002,
-                 save_freq=10000,
+                 save_freq=1000,
                  training=True,
                  load_agent=False,
-                 eval_agent_path="checkpoint/eval_net-episode-2290000--score-3132.0",
-                 targ_agent_path="checkpoint/targ_net-episode-2290000--score-3132.0"):
+                 eval_agent_path="checkpoint/eval_net-episode-7000--score-10.0",
+                 targ_agent_path="checkpoint/targ_net-episode-7000--score-10.0"):
         ReplayMemory.__init__(self, capacity=10000)
 
         self.action_space = action_space
@@ -49,6 +49,9 @@ class AgentQ(Agent, ReplayMemory):
         self.save_freq = save_freq
         self.iteration_count = 0
         self.training = training
+
+        if not training:
+            epsilon = epsilon_min
 
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
@@ -81,7 +84,7 @@ class AgentQ(Agent, ReplayMemory):
             if self.epsilon > self.epsilon_min else self.epsilon_min
 
     def act(self, state) -> int:
-        if random.random() > self.epsilon or not self.training:
+        if random.random() > self.epsilon:
             state = torch.tensor(state, device=device)
             return self.eval_net(state.unsqueeze(0)).argmax(1).item()
         else:
@@ -90,10 +93,10 @@ class AgentQ(Agent, ReplayMemory):
     def before(self):
         pass
 
-    def after(self, score):
+    def after(self, episode, score):
         self.iteration_count += 1
-        if self.iteration_count % self.save_freq == 0:
-            self.save_model(score)
+        if episode % self.save_freq == 0:
+            self.save_model(episode, score)
         self.decay_epsilon()
 
     def learn(self, *args, **kwargs):
@@ -145,9 +148,9 @@ class AgentQ(Agent, ReplayMemory):
         self.eval_net.load_state_dict(torch.load(eval_path))
         self.targ_net.load_state_dict(torch.load(targ_path))
 
-    def save_model(self, score):
-        torch.save(self.eval_net.state_dict(), EVAL_SAVE_FORMAT.format(self.iteration_count, score))
-        torch.save(self.targ_net.state_dict(), TARG_SAVE_FORMAT.format(self.iteration_count, score))
+    def save_model(self, episode, score):
+        torch.save(self.eval_net.state_dict(), EVAL_SAVE_FORMAT.format(episode, score))
+        torch.save(self.targ_net.state_dict(), TARG_SAVE_FORMAT.format(episode, score))
 
 
 class SkipEnv(gym.Wrapper):
