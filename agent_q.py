@@ -1,19 +1,15 @@
 import random
 
-import gym
-import gym_super_mario_bros
 import torch
-import numpy as np
-from agent_base import Agent
+from agent_frame import AgentBase
+
 from agent_augments.memory import ReplayMemory
-from skimage.transform import resize
-from skimage.color import rgb2gray
 from torchsummary import summary
 
 from model import DQN
 
-EVAL_SAVE_FORMAT = "./checkpoint/eval_net-episode-{}--score-{}"
-TARG_SAVE_FORMAT = "./checkpoint/targ_net-episode-{}--score-{}"
+EVAL_SAVE_FORMAT = "./checkpoint/eval_net-episode-{}--score-{}--last_reward-{}"
+TARG_SAVE_FORMAT = "./checkpoint/targ_net-episode-{}--score-{}--last_reward-{}"
 
 if torch.cuda.is_available():
     device = torch.device("cuda:0")
@@ -23,7 +19,7 @@ else:
 print("Using device: {}".format(device))
 
 
-class AgentQ(Agent, ReplayMemory):
+class AgentQ(AgentBase, ReplayMemory):
 
     def __init__(self,
                  action_space,
@@ -39,8 +35,8 @@ class AgentQ(Agent, ReplayMemory):
                  save_freq=1000,
                  training=True,
                  load_agent=False,
-                 eval_agent_path="checkpoint/eval_net-episode-7000--score-10.0",
-                 targ_agent_path="checkpoint/targ_net-episode-7000--score-10.0"):
+                 eval_agent_path="saved_models/LVL1-Complete/eval_net-episode-7000",
+                 targ_agent_path="saved_models/LVL1-Complete/targ_net-episode-7000"):
         ReplayMemory.__init__(self, capacity=10000)
 
         self.action_space = action_space
@@ -49,6 +45,7 @@ class AgentQ(Agent, ReplayMemory):
         self.save_freq = save_freq
         self.iteration_count = 0
         self.training = training
+        self.checkpoints_recorded = []
 
         if not training:
             epsilon = epsilon_min
@@ -58,6 +55,7 @@ class AgentQ(Agent, ReplayMemory):
         self.epsilon_decay = epsilon_decay
         self.gamma = gamma
         self.replace_every = 1000
+        self.episode = 0
 
         self.eval_net = DQN(device, action_space, batch_size, frames, height, width, learning_rate)
         self.targ_net = DQN(device, action_space, batch_size, frames, height, width, learning_rate)
@@ -90,13 +88,15 @@ class AgentQ(Agent, ReplayMemory):
         else:
             return random.randrange(self.action_space)
 
-    def before(self):
+    def before(self, *args, **kwargs):
         pass
 
-    def after(self, episode, score):
+    def after(self, *args, **kwargs):
         self.iteration_count += 1
-        if episode % self.save_freq == 0:
-            self.save_model(episode, score)
+        if self.episode % self.save_freq == 0 and \
+                self.episode not in self.checkpoints_recorded:
+            self.checkpoints_recorded.append(self.episode)
+            self.save_model(self.episode, kwargs['score'], kwargs['reward'])
         self.decay_epsilon()
 
     def learn(self, *args, **kwargs):
@@ -105,6 +105,9 @@ class AgentQ(Agent, ReplayMemory):
                       kwargs.get('reward'),
                       kwargs.get('next_state'),
                       kwargs.get('done'))
+
+        if kwargs['done']:
+            self.episode += 1
 
         if not self.training:
             return
@@ -148,91 +151,6 @@ class AgentQ(Agent, ReplayMemory):
         self.eval_net.load_state_dict(torch.load(eval_path))
         self.targ_net.load_state_dict(torch.load(targ_path))
 
-    def save_model(self, episode, score):
-        torch.save(self.eval_net.state_dict(), EVAL_SAVE_FORMAT.format(episode, score))
-        torch.save(self.targ_net.state_dict(), TARG_SAVE_FORMAT.format(episode, score))
-
-
-class SkipEnv(gym.Wrapper):
-    def __init__(self, env=None, skip=4):
-        super(SkipEnv, self).__init__(env)
-        self._skip = skip
-
-    def step(self, action):
-        t_reward = 0.0
-        done = False
-        for _ in range(self._skip):
-            obs, reward, done, info = self.env.step(action)
-            t_reward += reward
-            if done:
-                break
-        return obs, t_reward, done, info
-
-    def reset(self):
-        self._obs_buffer = []
-        obs = self.env.reset()
-        self._obs_buffer.append(obs)
-        return obs
-
-
-class PreProcessFrame(gym.ObservationWrapper):
-    def __init__(self, env=None):
-        super(PreProcessFrame, self).__init__(env)
-        self.observation_space = gym.spaces.Box(low=0, high=255,
-                                                shape=(80, 80, 1), dtype=np.uint8)
-
-    def observation(self, obs):
-        return PreProcessFrame.process(obs)
-
-    @staticmethod
-    def process(frame):
-        frame = frame[40:, :, :]
-        frame = rgb2gray(frame.astype(np.float32))
-        frame = resize(frame, (80, 80))
-
-        return np.expand_dims(frame, -1).astype(np.float32)
-
-
-class MoveImgChannel(gym.ObservationWrapper):
-    def __init__(self, env):
-        super(MoveImgChannel, self).__init__(env)
-        self.observation_space = gym.spaces.Box(low=0.0, high=1.0,
-                                                shape=(self.observation_space.shape[-1],
-                                                       self.observation_space.shape[0],
-                                                       self.observation_space.shape[1]),
-                                                dtype=np.float32)
-
-    def observation(self, observation):
-        return np.moveaxis(observation, 2, 0)
-
-
-class ScaleFrame(gym.ObservationWrapper):
-    def observation(self, obs):
-        return np.array(obs).astype(np.float32) / 255.0
-
-
-class BufferWrapper(gym.ObservationWrapper):
-    def __init__(self, env, n_steps):
-        super(BufferWrapper, self).__init__(env)
-        self.observation_space = gym.spaces.Box(
-            env.observation_space.low.repeat(n_steps, axis=0),
-            env.observation_space.high.repeat(n_steps, axis=0),
-            dtype=np.float32)
-
-    def reset(self):
-        self.buffer = np.zeros_like(self.observation_space.low, dtype=np.float32)
-        return self.observation(self.env.reset())
-
-    def observation(self, observation):
-        self.buffer[:-1] = self.buffer[1:]
-        self.buffer[-1] = observation
-        return self.buffer
-
-
-def make_env(env_name):
-    env = gym_super_mario_bros.make(env_name)
-    env = SkipEnv(env)
-    env = PreProcessFrame(env)
-    env = MoveImgChannel(env)
-    env = BufferWrapper(env, 4)
-    return ScaleFrame(env)
+    def save_model(self, episode, score, last_reward):
+        torch.save(self.eval_net.state_dict(), EVAL_SAVE_FORMAT.format(episode, score, last_reward))
+        torch.save(self.targ_net.state_dict(), TARG_SAVE_FORMAT.format(episode, score, last_reward))
