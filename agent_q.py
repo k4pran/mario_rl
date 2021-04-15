@@ -35,8 +35,8 @@ class AgentQ(AgentBase, ReplayMemory):
                  save_freq=1000,
                  training=True,
                  load_agent=False,
-                 eval_agent_path="saved_models/LVL1-Complete/eval_net-episode-7000",
-                 targ_agent_path="saved_models/LVL1-Complete/targ_net-episode-7000"):
+                 eval_agent_path="saved_models/LVL1-Complete/eval_net",
+                 targ_agent_path="saved_models/LVL1-Complete/targ_net"):
         ReplayMemory.__init__(self, capacity=10000)
 
         self.action_space = action_space
