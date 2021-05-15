@@ -8,8 +8,8 @@ from torchsummary import summary
 
 from model import DQN
 
-EVAL_SAVE_FORMAT = "./checkpoint/eval_net-episode-{}--score-{}--last_reward-{}"
-TARG_SAVE_FORMAT = "./checkpoint/targ_net-episode-{}--score-{}--last_reward-{}"
+EVAL_MODEL_NAME = "eval"
+TARG_MODEL_NAME = "targ"
 
 if torch.cuda.is_available():
     device = torch.device("cuda:0")
@@ -61,7 +61,7 @@ class AgentQ(AgentBase, ReplayMemory):
         self.targ_net = DQN(device, action_space, batch_size, frames, height, width, learning_rate)
 
         if load_agent:
-            self.load_model(eval_agent_path, targ_agent_path)
+            self.load_model()
 
         summary(self.eval_net, (frames, height, width))
         summary(self.targ_net, (frames, height, width))
@@ -96,7 +96,7 @@ class AgentQ(AgentBase, ReplayMemory):
         if self.episode % self.save_freq == 0 and \
                 self.episode not in self.checkpoints_recorded:
             self.checkpoints_recorded.append(self.episode)
-            self.save_model(self.episode, kwargs['score'], kwargs['reward'])
+            self.save_model()
         self.decay_epsilon()
 
     def learn(self, *args, **kwargs):
@@ -147,10 +147,10 @@ class AgentQ(AgentBase, ReplayMemory):
     def get_epsilon(self):
         return self.epsilon
 
-    def load_model(self, eval_path, targ_path):
-        self.eval_net.load_state_dict(torch.load(eval_path))
-        self.targ_net.load_state_dict(torch.load(targ_path))
+    def load_model(self):
+        self.load_pytorch_model(self.eval_net, EVAL_MODEL_NAME, 'lvl3')
+        self.load_pytorch_model(self.targ_net, TARG_MODEL_NAME, 'lvl3')
 
-    def save_model(self, episode, score, last_reward):
-        torch.save(self.eval_net.state_dict(), EVAL_SAVE_FORMAT.format(episode, score, last_reward))
-        torch.save(self.targ_net.state_dict(), TARG_SAVE_FORMAT.format(episode, score, last_reward))
+    def save_model(self):
+        self.save_pytorch_model(self.eval_net, EVAL_MODEL_NAME, 'lvl3')
+        self.save_pytorch_model(self.targ_net, TARG_MODEL_NAME, 'lvl3')

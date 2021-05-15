@@ -84,7 +84,7 @@ class BufferWrapper(gym.ObservationWrapper):
 
 
 def make_env():
-    env = gym_super_mario_bros.make('SuperMarioBros-1-2-v0')
+    env = gym_super_mario_bros.make('SuperMarioBros-1-4-v0')
     env = JoypadSpace(env, RIGHT_ONLY)
     env = SkipEnv(env)
     env = PreProcessFrame(env)

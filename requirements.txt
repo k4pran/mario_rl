@@ -1,4 +1,4 @@
-agent-frame==0.2.9
+agent-frame==0.3.0
 gym==0.17.2
 gym-super-mario-bros==7.3.0
 imageio==2.9.0
