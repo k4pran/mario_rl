@@ -1,7 +1,7 @@
 import random
 
 import torch
-from agent_frame import AgentBase
+from scaffo import AgentBase
 
 from agent_augments.memory import ReplayMemory
 from torchsummary import summary
@@ -34,9 +34,7 @@ class AgentQ(AgentBase, ReplayMemory):
                  learning_rate=0.0002,
                  save_freq=1000,
                  training=True,
-                 load_agent=False,
-                 eval_agent_path="saved_models/LVL1-Complete/eval_net",
-                 targ_agent_path="saved_models/LVL1-Complete/targ_net"):
+                 load_agent=False):
         ReplayMemory.__init__(self, capacity=10000)
 
         self.action_space = action_space
@@ -148,9 +146,9 @@ class AgentQ(AgentBase, ReplayMemory):
         return self.epsilon
 
     def load_model(self):
-        self.load_pytorch_model(self.eval_net, EVAL_MODEL_NAME, 'lvl3')
-        self.load_pytorch_model(self.targ_net, TARG_MODEL_NAME, 'lvl3')
+        self.load_pytorch_model(self.eval_net, EVAL_MODEL_NAME, 'lvl5')
+        self.load_pytorch_model(self.targ_net, TARG_MODEL_NAME, 'lvl5')
 
     def save_model(self):
-        self.save_pytorch_model(self.eval_net, EVAL_MODEL_NAME, 'lvl3')
-        self.save_pytorch_model(self.targ_net, TARG_MODEL_NAME, 'lvl3')
+        self.save_pytorch_model(self.eval_net, EVAL_MODEL_NAME, 'lvl5')
+        self.save_pytorch_model(self.targ_net, TARG_MODEL_NAME, 'lvl5')
