@@ -1,4 +1,4 @@
-scaffo==0.0.1
+scaffo==0.0.2
 gym==0.17.2
 gym-super-mario-bros==7.3.0
 imageio==2.9.0

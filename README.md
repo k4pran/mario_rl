@@ -17,3 +17,6 @@ at the beginning
 ### Level 5
 TODO - Almost completes this level, but has trouble with the end spring
 ![](saved_models/LVL5-Almost/mario-lvl-5.gif)
+
+### Level 5
+![](saved_models/LVL6-Complete/mario-lvl-6.gif)
