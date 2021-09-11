@@ -1,22 +1,25 @@
 ## Mario with Q-Learning
 
-### Level 1
-![](saved_models/LVL1-Complete/mario-lvl-1.gif)
+### Level 1-1
+![](saved_models/LVL1-1-Complete/mario-lvl-1-1.gif)
 
-### Level 2
-![](saved_models/LVL2-Complete/mario-lvl-2.gif)
+### Level 1-2
+![](saved_models/LVL1-2-Complete/mario-lvl-1-2.gif)
 
-### Level 3
+### Level 1-3
 TODO - current model doesn't seem to beat this level. It could be related
 to the need for more exploration to avoid the density of pitfalls
 at the beginning
 
-### Level 4
-![](saved_models/LVL4-Complete/mario-lvl-4.gif)
+### Level 1-4
+![](saved_models/LVL1-4-Complete/mario-lvl-1-4.gif)
 
-### Level 5
+### Level 2-1
 TODO - Almost completes this level, but has trouble with the end spring
-![](saved_models/LVL5-Almost/mario-lvl-5.gif)
+![](saved_models/LVL2-1-Almost/mario-lvl-2-1.gif)
 
-### Level 5
-![](saved_models/LVL6-Complete/mario-lvl-6.gif)
+### Level 2-2
+![](saved_models/LVL2-2-Complete/mario-lvl-2-2.gif)
+
+### Level 2-3
+![](saved_models/LVL2-3-Complete/mario-lvl-2-3.gif)
