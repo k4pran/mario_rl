@@ -38,3 +38,6 @@ TODO - Almost completes this level, but has trouble with the end spring
 
 ### Level 3-4
 ![](saved_models/LVL3-4-Complete/mario-lvl-3-4.gif)
+
+### Level 4-1
+![](saved_models/LVL4-1-Complete/mario-lvl-4-1.gif)
