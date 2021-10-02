@@ -44,3 +44,12 @@ TODO - Almost completes this level, but has trouble with the end spring
 
 ### Level 4-2
 ![](saved_models/LVL4-2-Complete/mario-lvl-4-2.gif)
+
+### Level 4-3
+TODO - Failed at this level
+
+### Level 4-4
+TODO - Failed at this level
+
+### Level 5-1
+![](saved_models/LVL5-1-Complete/mario-lvl-5-1.gif)
