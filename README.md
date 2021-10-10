@@ -53,3 +53,12 @@ TODO - Failed at this level
 
 ### Level 5-1
 ![](saved_models/LVL5-1-Complete/mario-lvl-5-1.gif)
+
+### Level 5-2
+![](saved_models/LVL5-2-Complete/mario-lvl-5-2.gif)
+
+### Level 5-3
+TODO - Failed at this level
+
+### Level 5-4
+![](saved_models/LVL5-4-Complete/mario-lvl-5-4.gif)
