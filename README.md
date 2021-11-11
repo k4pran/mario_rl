@@ -62,3 +62,18 @@ TODO - Failed at this level
 
 ### Level 5-4
 ![](saved_models/LVL5-4-Complete/mario-lvl-5-4.gif)
+
+### Level 6-1
+![](saved_models/LVL6-1-Complete/mario-lvl-6-1.gif)
+
+### Level 6-2
+TODO - Failed at this level
+
+### Level 6-3
+![](saved_models/LVL6-3-Complete/mario-lvl-6-3.gif)
+
+### Level 6-4
+![](saved_models/LVL6-4-Complete/mario-lvl-6-4.gif)
+
+### Level 7-1
+![](saved_models/LVL7-1-Complete/mario-lvl-7-1.gif)
